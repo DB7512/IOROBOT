@@ -1,7 +1,7 @@
 #include "robotcontrol.h"
 #include <fstream>
 #include <iostream>
-
+#include <QDebug>
 using namespace std;
 
 RobotControl::RobotControl(QObject *parent)
@@ -45,7 +45,7 @@ void *RobotControl::RobotControl_thread(void *arg)
     temp_point.clear();
     while(robot->m_messagestate) {
         if(!robot->m_getpointstate) {
-            if(robot->ReadPointFromTXT("Acupoint.txt",acupoint)) {
+            if(robot->ReadPointFromTXT("/home/hua/IOROBOT/MassageRobot/Acupoint.txt",acupoint)) {
                 acupoint_number = size(acupoint);
                 for(int i = 0; i < acupoint_number*3; i++) {
                     temp_point = acupoint.at(i);
@@ -229,7 +229,7 @@ int RobotControl::ReadPointFromTXT(const std::string &filename, std::vector<std:
                 }
                 point.at(i) = acupoint[i];
             }
-            point_vector.push_back(point);
+            if(flag) point_vector.push_back(point);
         }
     }
     fclose(fp);

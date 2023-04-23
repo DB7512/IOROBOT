@@ -16,6 +16,7 @@ Widget::~Widget()
 
 void Widget::on_pushButton_clicked()
 {
+//    GetRobotControlInstance()->SetTcpOffsetFromFile();
     GetRobotControlInstance()->m_messagestate = true;
 }
 

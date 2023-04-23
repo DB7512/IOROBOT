@@ -17,16 +17,43 @@ public:
     virtual int CreatThread();
 
 public:
-    static void *RobotControl_thread(void *arg);
+    /**
+     * @brief ConnectRobot
+     *          连接设备
+     */
     void ConnectRobot();
+    /**
+     * @brief DisconnectRobot
+     *          与设备断开连接
+     */
     void DisconnectRobot();
+    /**
+     * @brief EnableRobot
+     *          机器人使能/关闭
+     * @param state
+     *          true：使能
+     *          false：关闭
+     */
     void EnableRobot(bool state);
+    /**
+     * @brief SetMassage
+     *          按摩开启/关闭
+     * @param state
+     *          true：使能
+     *          false：关闭
+     */
+    void SetMassage(bool state);
+
+
+private:
+    static void *RobotControl_thread(void *arg);
     void SetTcpOffest(float tcp_offest[6]);
+    void SetTcpOffsetFromFile(const std::string &filename);
     void SetBaseOffest(float base_offest[6]);
+    void SetBaseOffsetFromFile(const std::string &filename);
     void SetPosition(float point_in_camera[3]);
     int ReadPointFromTXT(const std::string &filename, std::vector<std::vector<float> > &point_vector);
 
-private:
     void PoseToHomogenousMatrix4f(float pose[6], float matrix[4][4]);
     void IdentityMatrix(float matrix[4][4]);
     void InverseMatrix(float matrix[4][4], float inverse_matrix[4][4]);

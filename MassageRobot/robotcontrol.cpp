@@ -12,6 +12,8 @@ RobotControl::RobotControl(QObject *parent)
     m_getpointstate = false;
     IdentityMatrix(m_tcpoffsetmatrix);
     IdentityMatrix(m_baseoffsetmatrix);
+    SetTcpOffsetFromFile("/home/hua/IOROBOT/MassageRobot/TcpOffset.txt");
+    SetBaseOffsetFromFile("/home/hua/IOROBOT/MassageRobot/BaseOffset.txt");
     for(int i = 0; i < 6; i++) {
         m_tcpoffset[i] = 0.0;
         m_baseoffset[i] = 0.0;
@@ -22,7 +24,7 @@ RobotControl::RobotControl(QObject *parent)
 
 RobotControl::~RobotControl()
 {
-
+    m_messagestate = false;
 }
 
 int RobotControl::CreatThread()
@@ -40,7 +42,7 @@ void *RobotControl::RobotControl_thread(void *arg)
     int run_point_number = 0;
     vector<float> temp_point(3);
     float point[3] = {0.0};
-    acupoint.clear();
+    int temp_number = 0;
     run_point.clear();
     temp_point.clear();
     while(robot->m_messagestate) {
@@ -48,7 +50,8 @@ void *RobotControl::RobotControl_thread(void *arg)
             if(robot->ReadPointFromTXT("/home/hua/IOROBOT/MassageRobot/Acupoint.txt",acupoint)) {
                 acupoint_number = size(acupoint);
                 for(int i = 0; i < acupoint_number*3; i++) {
-                    temp_point = acupoint.at(i);
+                    temp_number = i/3;
+                    temp_point = acupoint.at(temp_number);
                     if(i%3 == 0 || i%3 == 2) {
                         temp_point.at(0) -= 100;
                         run_point.push_back(temp_point);
@@ -138,6 +141,15 @@ void RobotControl::EnableRobot(bool state)
     }
 }
 
+void RobotControl::SetMassage(bool state)
+{
+    if(state == true) {
+        m_messagestate = true;
+    } else {
+        m_messagestate = false;
+    }
+}
+
 void RobotControl::SetTcpOffest(float tcp_offest[6])
 {
     //xyz+rpy
@@ -152,6 +164,35 @@ void RobotControl::SetTcpOffest(float tcp_offest[6])
             m_tcpoffsetmatrix[i][j] = offset_matrix[i][j];
         }
     }
+}
+
+void RobotControl::SetTcpOffsetFromFile(const string &filename)
+{
+//    const std::string filename = "/home/hua/IOROBOT/MassageRobot/TcpOffset.txt";
+    FILE *fp = fopen(filename.c_str(),"r");
+    bool flag = true;
+    float temp[4] = {0.0};
+    int row_number = 0;
+    if(fp == NULL) {
+        printf("文件打开失败。/n");
+        return;
+    } else {
+        while (flag) {
+            for(int i = 0; i < 4; i++) {
+                if(EOF == fscanf(fp, "%f", &temp[i])) {
+                    flag = false;
+                    break;
+                }
+                if(i == 3) {
+                    m_tcpoffsetmatrix[row_number][i] = temp[i]/1000.0;
+                } else {
+                    m_tcpoffsetmatrix[row_number][i] = temp[i];
+                }
+            }
+            row_number++;
+        }
+    }
+    fclose(fp);
 }
 
 void RobotControl::SetBaseOffest(float base_offest[])
@@ -170,6 +211,34 @@ void RobotControl::SetBaseOffest(float base_offest[])
     }
 }
 
+void RobotControl::SetBaseOffsetFromFile(const std::string &filename)
+{
+    FILE *fp = fopen(filename.c_str(),"r");
+    bool flag = true;
+    float temp[4] = {0.0};
+    int row_number = 0;
+    if(fp == NULL) {
+        printf("文件打开失败。/n");
+        return;
+    } else {
+        while (flag) {
+            for(int i = 0; i < 4; i++) {
+                if(EOF == fscanf(fp, "%f", &temp[i])) {
+                    flag = false;
+                    break;
+                }
+                if(i == 3) {
+                    m_baseoffsetmatrix[row_number][i] = temp[i]/1000.0;
+                } else {
+                    m_baseoffsetmatrix[row_number][i] = temp[i];
+                }
+            }
+            row_number++;
+        }
+    }
+    fclose(fp);
+}
+
 void RobotControl::SetPosition(float point_in_camera[])
 {
     //Step1：将工具相对于相机的位姿 变为 工具相对于基座的位姿
@@ -178,13 +247,13 @@ void RobotControl::SetPosition(float point_in_camera[])
     for(int i = 0; i < 3; i++) {
         position_in_camera[i] = point_in_camera[i];     //穴位在相机下的位置
     }
-    float base_in_camera[4][4];         //基座在相机下
+//    float base_in_camera[4][4];         //基座在相机下
     float camera_in_base[4][4];         //相机在基座下
     float tool_in_base_f4[4] = {0.0};   //工具在基座下
     float tool_in_base_f3[3] = {0.0};   //工具在基座下
     float tool_in_end_f3[3]  = {0.0};   //工具在末端下
     float rotation_tool_in_base[3][3];  //工具在基座下
-    IdentityMatrix(base_in_camera);
+//    IdentityMatrix(base_in_camera);
     IdentityMatrix(camera_in_base);
     for(int i = 0; i < 4; i++) {
         for(int j = 0; j < 4; j++) {
@@ -205,9 +274,10 @@ void RobotControl::SetPosition(float point_in_camera[])
     float temp_vector[3] = {0.0};
     MatrixMultiplyVector3f(rotation_tool_in_base, tool_in_end_f3, temp_vector);
     for(int i = 0; i < 3; i++) {
-        point_in_base[i] = tool_in_base_f3[i] - temp_vector[i];
+        point_in_base[i] = (tool_in_base_f3[i] - temp_vector[i]) * 1000.0;
     }
     int ret = 0;
+    //触发停止信号怎么处理？？？？？？
     ret = m_arm->set_position(point_in_base, true);
 }
 

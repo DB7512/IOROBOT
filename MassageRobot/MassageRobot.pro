@@ -11,10 +11,12 @@ CONFIG += c++17
 SOURCES += \
     main.cpp \
     robotcontrol.cpp \
+    socketcan.cpp \
     widget.cpp
 
 HEADERS += \
     robotcontrol.h \
+    socketcan.h \
     widget.h
 
 FORMS += \

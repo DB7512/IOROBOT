@@ -51,7 +51,7 @@ private:
     void SetTcpOffsetFromFile(const std::string &filename);
     void SetBaseOffest(float base_offest[6]);
     void SetBaseOffsetFromFile(const std::string &filename);
-    void SetPosition(float point_in_camera[3]);
+    void ProcessPosition(float point_in_camera[3], std::vector<float> &run_point);
     int ReadPointFromTXT(const std::string &filename, std::vector<std::vector<float> > &point_vector);
 
     void PoseToHomogenousMatrix4f(float pose[6], float matrix[4][4]);
@@ -67,8 +67,9 @@ public:
     pthread_t m_control;
     bool m_connectstate;        //tcp连接状态
     bool m_enablestate;         //机器人使能标志
-    bool m_messagestate;        //按摩标志
+    bool m_massagestate;        //按摩标志
     bool m_getpointstate;       //从文件读取按摩点位置
+    bool m_emergencystate;      //触发力控标志
 
     float m_tcpoffset[6];               //
     float m_tcpoffsetmatrix[4][4];      //

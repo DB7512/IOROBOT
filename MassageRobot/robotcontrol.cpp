@@ -4,11 +4,12 @@
 #include <QDebug>
 using namespace std;
 
+#define PI 3.14159265358979
 RobotControl::RobotControl(QObject *parent)
     : QObject{parent}
 {
     m_connectstate = false;
-    m_messagestate = false;
+    m_massagestate = false;
     m_getpointstate = false;
     IdentityMatrix(m_tcpoffsetmatrix);
     IdentityMatrix(m_baseoffsetmatrix);
@@ -18,13 +19,13 @@ RobotControl::RobotControl(QObject *parent)
         m_tcpoffset[i] = 0.0;
         m_baseoffset[i] = 0.0;
     }
-    CreatThread();
+
 }
 
 
 RobotControl::~RobotControl()
 {
-    m_messagestate = false;
+    m_massagestate = false;
 }
 
 int RobotControl::CreatThread()
@@ -40,24 +41,35 @@ void *RobotControl::RobotControl_thread(void *arg)
     vector<vector<float> > run_point;
     int acupoint_number = 0;
     int run_point_number = 0;
-    vector<float> temp_point(3);
+    vector<float> temp_point;
+    vector<float> final_point;
     float point[3] = {0.0};
+    float ftemp_point[6] = {0.0};
     int temp_number = 0;
     run_point.clear();
     temp_point.clear();
-    while(robot->m_messagestate) {
+    qDebug("1");
+    while(robot->m_massagestate) {
+        qDebug("3");
         if(!robot->m_getpointstate) {
             if(robot->ReadPointFromTXT("/home/hua/IOROBOT/MassageRobot/Acupoint.txt",acupoint)) {
                 acupoint_number = size(acupoint);
                 for(int i = 0; i < acupoint_number*3; i++) {
                     temp_number = i/3;
                     temp_point = acupoint.at(temp_number);
+                    for(int j = 0; j < 3; j++) {
+                        point[j] = temp_point.at(j);
+                    }
+                    temp_point.clear();
                     if(i%3 == 0 || i%3 == 2) {
-                        temp_point.at(0) -= 100;
-                        run_point.push_back(temp_point);
-                        temp_point.clear();
+                        point[0] -= 100;
+                        robot->ProcessPosition(point, final_point);
+                        run_point.push_back(final_point);
+                        final_point.clear();
                     } else {
-                        run_point.push_back(temp_point);
+                        robot->ProcessPosition(point, final_point);
+                        run_point.push_back(final_point);
+                        final_point.clear();
                     }
                 }
                 robot->m_getpointstate = true;
@@ -67,14 +79,63 @@ void *RobotControl::RobotControl_thread(void *arg)
         } else {
             run_point_number = size(run_point);
             for(int i = 0; i < run_point_number; i++) {
-                temp_point = run_point.front();
-                for(int j = 0; j < 3; j++) {
-                    point[i] = temp_point.at(i);
+                temp_point = run_point.at(i);
+                temp_number = size(temp_point);
+                for(int j = 0; j < temp_number; j++) {
+                    ftemp_point[j] = temp_point.at(j);
                 }
-                robot->SetPosition(point);
+                robot->m_arm->set_position(ftemp_point,false);
+                if(robot->m_emergencystate) {
+                    robot->m_arm->reset(true);
+                    printf("发生碰撞，请注意安全！\n");
+                    robot->m_massagestate = false;
+                    robot->m_getpointstate = false;
+                    break;
+                }
             }
         }
     }
+
+//    RobotControl *robot = (RobotControl*)arg;
+//    vector<vector<float> > acupoint;
+//    vector<vector<float> > run_point;
+//    int acupoint_number = 0;
+//    int run_point_number = 0;
+//    vector<float> temp_point(3);
+//    float point[3] = {0.0};
+//    int temp_number = 0;
+//    run_point.clear();
+//    temp_point.clear();
+//    while(robot->m_massagestate) {
+//        if(!robot->m_getpointstate) {
+//            if(robot->ReadPointFromTXT("/home/hua/IOROBOT/MassageRobot/Acupoint.txt",acupoint)) {
+//                acupoint_number = size(acupoint);
+//                for(int i = 0; i < acupoint_number*3; i++) {
+//                    temp_number = i/3;
+//                    temp_point = acupoint.at(temp_number);
+//                    if(i%3 == 0 || i%3 == 2) {
+//                        temp_point.at(0) -= 100;
+//                        run_point.push_back(temp_point);
+//                        temp_point.clear();
+//                    } else {
+//                        run_point.push_back(temp_point);
+//                    }
+//                }
+//                robot->m_getpointstate = true;
+//            } else {
+//                printf("获取穴位信息失败！\n");
+//            }
+//        } else {
+//            run_point_number = size(run_point);
+//            for(int i = 0; i < run_point_number; i++) {
+//                temp_point = run_point.at(i);
+//                for(int j = 0; j < 3; j++) {
+//                    point[j] = temp_point.at(j);
+//                }
+//                robot->ProcessPosition(point, );
+//            }
+//        }
+//    }
 }
 
 
@@ -125,18 +186,25 @@ void RobotControl::EnableRobot(bool state)
         if(m_arm->is_connected()) {
             if (m_arm->error_code != 0) m_arm->clean_error();
             if (m_arm->warn_code != 0) m_arm->clean_warn();
-            m_arm->motion_enable(state);
-            m_arm->set_mode(0);
-            m_arm->set_state(0);
+
             if(state) {
+                m_arm->motion_enable(state);
+                m_arm->set_mode(0);
+                m_arm->set_state(0);
+                m_enablestate = true;
                 printf("机器人使能成功。\n");
             } else {
+                m_enablestate = false;
                 printf("机器人关闭成功。\n");
             }
         } else {
+            m_connectstate = false;
+            m_enablestate = false;
             printf("设备未连接，请重新连接。\n");
         }
     } else {
+        m_connectstate = false;
+        m_enablestate = false;
         printf("设备未连接，请重新连接。\n");
     }
 }
@@ -144,9 +212,11 @@ void RobotControl::EnableRobot(bool state)
 void RobotControl::SetMassage(bool state)
 {
     if(state == true) {
-        m_messagestate = true;
+        m_massagestate = true;
+        m_arm->set_gripper_enable(true);
+        CreatThread();
     } else {
-        m_messagestate = false;
+        m_massagestate = false;
     }
 }
 
@@ -239,34 +309,36 @@ void RobotControl::SetBaseOffsetFromFile(const std::string &filename)
     fclose(fp);
 }
 
-void RobotControl::SetPosition(float point_in_camera[])
+void RobotControl::ProcessPosition(float point_in_camera[3], vector<float> &run_point )
 {
     //Step1：将工具相对于相机的位姿 变为 工具相对于基座的位姿
-    float point_in_base[6] = {0.0,0.0,0.0,180.0,0.0,0.0};
-    float position_in_camera[4] = {0.0,0.0,0.0,1};      //
-    for(int i = 0; i < 3; i++) {
-        position_in_camera[i] = point_in_camera[i];     //穴位在相机下的位置
-    }
-//    float base_in_camera[4][4];         //基座在相机下
+    float point_in_base[6] = {0.0,0.0,0.0,PI,0.0,0.0};
+    float position_in_camera[4] = {0.0,0.0,0.0,1};
     float camera_in_base[4][4];         //相机在基座下
-    float tool_in_base_f4[4] = {0.0};   //工具在基座下
-    float tool_in_base_f3[3] = {0.0};   //工具在基座下
-    float tool_in_end_f3[3]  = {0.0};   //工具在末端下
-    float rotation_tool_in_base[3][3];  //工具在基座下
-//    IdentityMatrix(base_in_camera);
+    float tool_in_base_f4[4] = {0.0};   //基坐标系下,工具的位置
+    float tool_in_base_f3[3] = {0.0};   //基坐标系下,工具的位置
+    float tool_in_end_f3[3]  = {0.0};   //末端坐标系下,工具的位置
+    float rotation_tool_in_base[3][3];  //基坐标系下,工具的姿态矩阵
+    //穴位在相机下的位置
+    for(int i = 0; i < 3; i++) {
+        position_in_camera[i] = point_in_camera[i]/1000.0;
+    }
     IdentityMatrix(camera_in_base);
+    //相机在基座下的位置
     for(int i = 0; i < 4; i++) {
         for(int j = 0; j < 4; j++) {
             camera_in_base[i][j] = m_baseoffsetmatrix[i][j];
         }
     }
+    //工具在基坐标系下的位置
     MatrixMultiplyVector4f(camera_in_base, position_in_camera, tool_in_base_f4);
     //Step2：将工具相对于基座的位姿 变为 末端相对于基座的位姿
     float matrix_tool_in_base[4][4];
+    //工具在基坐标系下的齐次矩阵
     PoseToHomogenousMatrix4f(point_in_base, matrix_tool_in_base);
     for(int i = 0; i < 3; i++) {
         tool_in_base_f3[i]  = tool_in_base_f4[i];
-        tool_in_end_f3[i]   = m_tcpoffset[i];
+        tool_in_end_f3[i]   = m_tcpoffsetmatrix[i][3];
         for(int j = 0; j < 3; j++) {
             rotation_tool_in_base[i][j] = matrix_tool_in_base[i][j];
         }
@@ -276,9 +348,11 @@ void RobotControl::SetPosition(float point_in_camera[])
     for(int i = 0; i < 3; i++) {
         point_in_base[i] = (tool_in_base_f3[i] - temp_vector[i]) * 1000.0;
     }
-    int ret = 0;
-    //触发停止信号怎么处理？？？？？？
-    ret = m_arm->set_position(point_in_base, true);
+    point_in_base[3] = 180.0;
+    for(int i = 0; i < 6; i++) {
+        run_point.push_back(point_in_base[i]);
+    }
+//    m_arm->set_position(point_in_base, true);
 }
 
 int RobotControl::ReadPointFromTXT(const std::string &filename, std::vector<std::vector<float> > &point_vector)
@@ -310,7 +384,6 @@ void RobotControl::PoseToHomogenousMatrix4f(float pose[6], float matrix[4][4])
 {
     IdentityMatrix(matrix);
     //rpy:分别绕X,Y,Z轴旋转gama,beta,alpha
-    //rpy:度;position:毫米
     float gama = 0.0, beta = 0.0, alpha = 0.0;
     gama  = pose[3];
     beta  = pose[4];
@@ -377,17 +450,19 @@ void RobotControl::TransposeMatrix(float matrix[3][3], float transpose_matrix[3]
 void RobotControl::MatrixMultiplyVector4f(float matrix[4][4], float vector[4], float result[4])
 {
     for(int i = 0; i < 4; i++) {
-        for(int j = 0; j < 4; j++) {
-            result[i] += matrix[i][j] * vector[j];
-        }
+        result[i] = matrix[i][0] * vector[0] + matrix[i][1] * vector[1] + matrix[i][2] * vector[2] + matrix[i][3] * vector[3];
+//        for(int j = 0; j < 4; j++) {
+//            result[i] += matrix[i][j] * vector[j];
+//        }
     }
 }
 
 void RobotControl::MatrixMultiplyVector3f(float matrix[3][3], float vector[3], float result[3])
 {
     for(int i = 0; i < 3; i++) {
-        for(int j = 0; j < 3; j++) {
-            result[i] += matrix[i][j] * vector[j];
-        }
+        result[i] = matrix[i][0] * vector[0] + matrix[i][1] * vector[1] + matrix[i][2] * vector[2];
+//        for(int j = 0; j < 3; j++) {
+//            result[i] += matrix[i][j] * vector[j];
+//        }
     }
 }
